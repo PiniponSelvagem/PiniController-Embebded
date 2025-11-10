@@ -1,0 +1,3 @@
+[submodule "controller/lib/PiniCore"]
+	path = controller/lib/PiniCore
+	url = https://github.com/PiniponSelvagem/PiniCore-Embebded

@@ -1,0 +1,10 @@
+*.bin
+.vscode/*
+build/**
+0000_1_global/.vscode/**
+*.swp
+*.log
+scripts/venv/*
+controller/.pio
+controller/.vscode
+tests/programs/.vscode
