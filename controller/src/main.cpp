@@ -22,21 +22,25 @@
 #endif
 
 MQTT mqtt;
-
-/* THIS IS TEMPORARY */
 String topic_lwt;
+
+//#define READ_SENSORS
+
+#ifdef READ_SENSORS
 String topic_temperatureDHT;
 String topic_humidityDHT;
 String topic_temperatureLM;
+#endif // READ_SENSORS
 
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;      // adjust if needed
 const int   daylightOffset_sec = 0; // adjust if needed
 
-
+#ifdef READ_SENSORS
 LM35 lm35;
 DHT dht;
+#endif // READ_SENSORS
 
 #define UPDATE_VALUE    (15*1000)
 #define UPLOAD_VALUE    (5*60*1000)
@@ -44,8 +48,14 @@ uint64_t lastUpdate = 0;
 uint64_t lastUpload = 0;
 bool connectUpload = false;
 
-RelaysVirtual rVirtual;
-//IRelays irelays;
+//#define TEST_RELAYS_TS
+
+//RelaysVirtual rVirtual;
+#ifdef TEST_RELAYS_TS
+RelaysTS rTS;
+#endif // TEST_RELAYS_TS
+//RelaysX16Blue rBlue;
+
 
 
 void MQTT_callback(const char *topic, const byte *payload, const unsigned int length) {
@@ -92,10 +102,12 @@ void setup() {
     LOG_D(TAG_MAIN, "Received: [status: %d] [body (%d): %s]", status, bodyLen, body.c_str());
     */
 
-    topic_lwt = "irrigation/sectors/v0/"+String(getUniqueId())+"/up/lwt";
+   topic_lwt = "irrigation/sectors/v0/"+String(getUniqueId())+"/up/lwt";
+#ifdef READ_SENSORS
     topic_temperatureDHT = "irrigation/sectors/v0/"+String(getUniqueId())+"/up/sensors/temperature/0";
     topic_temperatureLM = "irrigation/sectors/v0/"+String(getUniqueId())+"/up/sensors/temperature/1";
     topic_humidityDHT = "irrigation/sectors/v0/"+String(getUniqueId())+"/up/sensors/humidity/0";
+#endif // READ_SENSORS
 
     /*
     OTATS ota(client, FIRMWARE_VERSION, "s_");
@@ -117,7 +129,6 @@ void setup() {
     mqtt.setClient(client, getUniqueId());
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCredentials(MQTT_USER, MQTT_PASS);
-
     mqtt.setWill(topic_lwt.c_str(), "0", 2, true);
 
     mqtt.onTopic(
@@ -135,11 +146,14 @@ void setup() {
     );
     mqtt.connect();
 
+#ifdef READ_SENSORS
     lm35.init(34, 2.0f);    // The one I have seems to be reading -2ºC below the real expected value
     dht.init(22, EDHT::DHT_11);
+#endif // READ_SENSORS
 
-    
-    rVirtual.init(2, 4);
+    /*
+    rVirtual.setModules(2, 4);
+    rVirtual.init();
     LOG_D(TAG_MAIN, "Virtual relays start");
     rVirtual.getActiveCount();
     LOG_D(TAG_MAIN, "Virtual [0:1] true");
@@ -156,29 +170,48 @@ void setup() {
     LOG_D(TAG_MAIN, "Virtual [1:0] true");
     rVirtual.set(1, 0, true);
     rVirtual.getActiveCount();
-    
+    */
+#ifdef TEST_RELAYS_TS
+    rTS.init();
+    for (int i=0; i<rTS.getRelaysPerModule(); ++i) {
+        rTS.set(0, i, true);
+        delay(500);
+    }
+#endif // TEST_RELAYS_TS
 
     LOG_I(TAG_MAIN, "Setup completed");
 }
 
+bool set = false;
+#ifdef READ_SENSORS
 int temp0Value;
 int hum0Value;
 int temp1Value;
+#endif // READ_SENSORS
 void loop() {
     network->maintain();
     mqtt.maintain();
 
+#ifdef TEST_RELAYS_TS
+    if (rTS.isModuleConnected(1)) {
+        if (!set) {
+            for (int i=0; i<rTS.getRelaysPerModule(); ++i) {
+                rTS.set(1, i, true);
+                delay(500);
+            }
+            set = true;
+        }
+    }
+    else {
+        set = false;
+    }
+#endif // TEST_RELAYS_TS
+
+#ifdef READ_SENSORS
     temp0Value = dht.readTemperature();
     hum0Value  = dht.readHumidity();
     temp1Value = lm35.readTemperature();
-
-    /*
-    if (lastUpdate + UPDATE_VALUE < getMillis()) {
-        LOG_T(TAG_MAIN, "%dºC | %dºC - %d%", temp1Value, temp0Value, hum0Value);
-        lastUpdate = getMillis();
-    }
-    */
-
+    
     if (mqtt.isConnected()) {
         if (lastUpload + UPLOAD_VALUE < getMillis() || connectUpload) {
             mqtt.publish(topic_temperatureDHT.c_str(), String(temp0Value).c_str(), false);
@@ -188,4 +221,5 @@ void loop() {
             connectUpload = false;
         }
     }
+#endif // READ_SENSORS
 }
