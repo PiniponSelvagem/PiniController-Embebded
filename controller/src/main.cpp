@@ -8,23 +8,6 @@
 
 #define FIRMWARE_VERSION    666
 
-
-#define MQTT_TOPIC_FMT_BASE_PATH                "irrigation/sectors/v0/%s"
-//
-#define MQTT_TOPIC_P_FMT                        MQTT_TOPIC_FMT_BASE_PATH "/up"
-#define MQTT_TOPIC_P_FMT_ONLINE                 MQTT_TOPIC_P_FMT         "/lwt"
-//
-#define MQTT_TOPIC_P_FMT_SENSORS                MQTT_TOPIC_P_FMT         "/sensors"
-#define MQTT_TOPIC_P_FMT_SENSORS_TEMPERATURE    MQTT_TOPIC_P_FMT_SENSORS "/temperature/%d"
-#define MQTT_TOPIC_P_FMT_SENSORS_HUMIDITY       MQTT_TOPIC_P_FMT_SENSORS "/humidity/%d"
-//
-#define MQTT_TOPIC_P_FMT_RELAYS                 MQTT_TOPIC_P_FMT         "/relays/%d/%d"
-//
-//
-#define MQTT_TOPIC_S_FMT                        MQTT_TOPIC_FMT_BASE_PATH "/down"
-#define MQTT_TOPIC_S_FMT_RELAYS                 MQTT_TOPIC_S_FMT         "/relays"
-
-
 #define USE_WIFI
 #ifdef USE_WIFI
     WiFiComm wifi;
@@ -34,78 +17,18 @@
     INetwork* network = (INetwork*)&mobile;
 #endif
 
-MQTT mqtt;
-String topic_lwt;
-
-#define READ_SENSORS
-#ifdef READ_SENSORS
-    String topic_p_temperatureDHT;
-    String topic_p_humidityDHT;
-    String topic_p_temperatureLM;
-
-    LM35 lm35;
-    DHT dht;
-
-    #define UPLOAD_VALUE    (5*60*1000)
-    uint64_t lastUpdate = 0;
-    uint64_t lastUpload = 0;
-#endif // READ_SENSORS
-
 bool connected = false;
-
-
-//#define TEST_RELAYS_TS
-
-String topic_s_relays;
-RelaysVirtual rVirtual;
-#define VIRTUAL_RELAYS__MODULES           2
-#define VIRTUAL_RELAYS__RELAYS_PER_MODULE 16
-#ifdef TEST_RELAYS_TS
-    RelaysTS rTS;
-#endif // TEST_RELAYS_TS
-//RelaysX16Blue rBlue;
 
 #define STORAGE_ID "PINI_TEST_CONTROLLER"
 Storage storage;
 
 
-#define _TOPIC_BUILDER_SIZE_ 128
-
-
-//#define LORA_TEST
-#ifdef LORA_TEST
-    LoRaComm loraComm;
-#endif
-
-
-void MQTT_callback(const char *topic, const byte *payload, const unsigned int length) {
-    LOG_I(TAG_MAIN, "Received: [topic: %s] [payload: %s] [length: %d]", topic, payload, length);
-}
-
-void setup() {
+void setup_() {
     Serial.begin(115200);
     Serial.println();   // Just to start on a new clean line
 
     LOG_I(TAG_MAIN, "Setup started");
     LOG_I(TAG_MAIN, "Firmware: [%d] | Build: [%s, %s]", FIRMWARE_VERSION, __DATE__, __TIME__);
-
-    LOG_F(TAG_MAIN, "Fatal example");
-    LOG_E(TAG_MAIN, "Error example");
-    LOG_W(TAG_MAIN, "Warning example");
-    LOG_I(TAG_MAIN, "Information example");
-    LOG_D(TAG_MAIN, "Debug example");
-    LOG_T(TAG_MAIN, "Trace example");
-
-    storage.init(STORAGE_ID, sizeof(STORAGE_ID));
-
-    rVirtual.init(VIRTUAL_RELAYS__MODULES, VIRTUAL_RELAYS__RELAYS_PER_MODULE);
-    rVirtual.onRelay(
-        [](uint8_t module, uint8_t relay, bool state) {
-            char topicBuilder[_TOPIC_BUILDER_SIZE_];
-            snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_P_FMT_RELAYS, getUniqueId(), module, relay);
-            mqtt.publish(topicBuilder, String(state?"1":"0").c_str(), true);
-        }
-    );
 
 #ifdef USE_WIFI
     wifi.init();
@@ -121,30 +44,6 @@ void setup() {
         delay(1000);
     }
     LOG_I(TAG_MAIN, "connected = %d", network->isConnected());
-
-    Client* client = network->getClient();
-
-    /*
-    HttpClient http(*client, "example.com");
-    int error = http.get("/");
-    int status  = http.responseStatusCode();
-    int bodyLen = http.contentLength();
-    String body = http.responseBody();
-    LOG_D(TAG_MAIN, "Received: [status: %d] [body (%d): %s]", status, bodyLen, body.c_str());
-    */
-
-
-    char topicBuilder[_TOPIC_BUILDER_SIZE_];
-    snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_P_FMT_ONLINE, getUniqueId());
-    topic_lwt = String(topicBuilder);
-#ifdef READ_SENSORS
-    snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_P_FMT_SENSORS_TEMPERATURE, getUniqueId(), 0);
-    topic_p_temperatureDHT = String(topicBuilder);
-    snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_P_FMT_SENSORS_TEMPERATURE, getUniqueId(), 1);
-    topic_p_temperatureLM = String(topicBuilder);
-    snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_P_FMT_SENSORS_HUMIDITY, getUniqueId(), 0);
-    topic_p_humidityDHT = String(topicBuilder);
-#endif // READ_SENSORS
 
     /*
     OTATS ota(client, FIRMWARE_VERSION, "s_");
@@ -163,131 +62,104 @@ void setup() {
     }
     */
 
-    mqtt.setClient(client, getUniqueId());
-    mqtt.setServer(MQTT_SERVER, MQTT_PORT);
-    mqtt.setCredentials(MQTT_USER, MQTT_PASS);
-    mqtt.setWill(topic_lwt.c_str(), "0", 2, true);
-
-    snprintf(topicBuilder, _TOPIC_BUILDER_SIZE_, MQTT_TOPIC_S_FMT_RELAYS, getUniqueId());
-    topic_s_relays = String(topicBuilder);
-    mqtt.onTopic(
-        topic_s_relays.c_str(),
-        [](const char* payload, uint32_t length) {
-            char *strPtr;
-            int module = atoi(strtok_r((char *)payload, ",", &strPtr));
-            int relay  = atoi(strtok_r(NULL, ",", &strPtr));
-            int state  = atoi(strtok_r(NULL, ",", &strPtr));
-            bool stateBool = (state == 1);
-            LOG_I(TAG_MAIN, "Received request to set: [module: '%d'] [relay: %d] [state: %s]", module, relay, stateBool?"true":"false");
-            rVirtual.set(module, relay, stateBool);
-        }
-    );
-
-    mqtt.onConnect(
-        []() {
-            mqtt.publish(topic_lwt.c_str(), "1", true);
-            connected = true;
-            rVirtual.invalidateAll();
-        }
-    );
-    mqtt.connect();
-
-    LOG_D(TAG_MAIN, topic_lwt.c_str());
-    LOG_D(TAG_MAIN, topic_s_relays.c_str());
-
-
-#ifdef READ_SENSORS
-    lm35.init(34, 2.0f);    // The one I have seems to be reading -2ºC below the real expected value
-    dht.init(22, EDHT::DHT_11);
-#endif // READ_SENSORS
-
-    
-    //rVirtual.setModules(2, 16);
-#ifdef TEST_RELAYS_TS
-    rTS.init();
-    for (int i=0; i<rTS.getRelaysPerModule(); ++i) {
-        rTS.set(0, i, true);
-        delay(500);
-    }
-#endif // TEST_RELAYS_TS
-
-#ifdef LORA_TEST
-    loraComm.init(27,19,5,18,23,26, 864, false, 666);
-    //loraComm.setCryptoPhrase(0xFE);
-    loraComm.setSpreadingFactor(7);
-    loraComm.setTxPower(20);
-    loraComm.setBandwidth(ELoRaBandwidth::LR_BW_125_KHZ);
-    loraComm.onReceive(
-        66,
-        [](uint32_t radioId, const uint8_t* payload, size_t size, int rssi, float snr) {
-            LOG_D(TAG_MAIN, "radioId=%d size=%d rssi=%d snr=%f", radioId, size, rssi, snr);
-            Serial.print("Payload: ");
-            for (size_t i = 0; i < size; ++i) {
-                Serial.print(payload[i], HEX);
-                Serial.print(' ');
-            }
-            Serial.println();
-        }
-    );
-    //
-    uint8_t payload[4] = { 0xFF, 0XAB, 0X12, 0X34 };
-    loraComm.send(555, 66, true, payload, 4);
-    //_sendAck(0x66, 66, 0x732CEF0A);
-#endif
-
     LOG_I(TAG_MAIN, "Setup completed");
 }
 
-uint64_t loraSend = 0;
-bool set = false;
-#ifdef READ_SENSORS
-    int temp0Value;
-    int hum0Value;
-    int temp1Value;
-#endif // READ_SENSORS
-void loop() {
+void loop_() {
     network->maintain();
-    mqtt.maintain();
+}
 
-#ifdef LORA_TEST
-    loraComm.maintain();
-    /*
-    if (loraSend + 10000 < getMillis()) {
-        uint8_t payload[4] = { 0xFF, 0XAB, 0X12, 0X34 };
-        lora.send(payload, 4);
-        loraSend = getMillis();
-    }
-    */
-#endif
 
-#ifdef TEST_RELAYS_TS
-    if (rTS.isModuleConnected(1)) {
-        if (!set) {
-            for (int i=0; i<rTS.getRelaysPerModule(); ++i) {
-                rTS.set(1, i, true);
-                delay(500);
-            }
-            set = true;
-        }
-    }
-    else {
-        set = false;
-    }
-#endif // TEST_RELAYS_TS
 
-#ifdef READ_SENSORS
-    temp0Value = dht.readTemperature();
-    hum0Value  = dht.readHumidity();
-    temp1Value = lm35.readTemperature();
-    
-    if (mqtt.isConnected()) {
-        if (lastUpload + UPLOAD_VALUE < getMillis() || connected) {
-            mqtt.publish(topic_p_temperatureDHT.c_str(), String(temp0Value).c_str(), false);
-            mqtt.publish(topic_p_humidityDHT.c_str(), String(hum0Value).c_str(), false);
-            mqtt.publish(topic_p_temperatureLM.c_str(), String(temp1Value).c_str(), false);
-            lastUpload = getMillis();
-            connected = false;
-        }
-    }
-#endif // READ_SENSORS
+
+
+
+
+
+
+
+
+
+
+
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_VEML7700.h>
+#include <ClosedCube_HDC1080.h>
+#include <SparkFun_MAX1704x_Fuel_Gauge_Arduino_Library.h>
+
+#define SOIL_PIN 4
+
+#define SDA_PIN 2
+#define SCL_PIN 3
+
+#define SOIL_EN 5
+#define TEMP_EN 6
+#define LIGHT_EN 7
+
+Adafruit_VEML7700 lightSensor;
+ClosedCube_HDC1080 tempSensor;
+SFE_MAX1704X battery;
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println();   // Just to start on a new clean line
+
+    LOG_I(TAG_MAIN, "Setup started");
+
+    Wire.begin(SDA_PIN, SCL_PIN);
+
+    // Power sensors
+    pinMode(SOIL_EN, OUTPUT);
+    pinMode(TEMP_EN, OUTPUT);
+    pinMode(LIGHT_EN, OUTPUT);
+
+    digitalWrite(SOIL_EN, HIGH);
+    digitalWrite(TEMP_EN, HIGH);
+    digitalWrite(LIGHT_EN, HIGH);
+
+    analogReadResolution(12);
+
+    // Light sensor
+    if (!lightSensor.begin())
+        LOG_I(TAG_MAIN, "VEML7700 not detected");
+
+    // Temperature/Humidity
+    tempSensor.begin(0x40);
+
+    // Battery
+    if (!battery.begin())
+        LOG_I(TAG_MAIN, "MAX17043 not detected");
+}
+
+float readSoilPercent() {
+    int mv = analogReadMilliVolts(SOIL_PIN);  // calibrated reading
+    float voltage = mv / 1000.0;
+
+    const float DRY = 1.98;
+    const float WET = 0.89;
+
+    float percent = (DRY - voltage) * 100.0 / (DRY - WET);
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    return percent;
+}
+
+void loop() {
+    float soil = readSoilPercent();
+
+    float lux = lightSensor.readLux();
+
+    float temperature = tempSensor.readTemperature();
+    float humidity = tempSensor.readHumidity();
+
+    float voltage = battery.getVoltage();
+    float percent = battery.getSOC();
+
+    LOG_I(TAG_MAIN,
+        "Soil: %3.3f | Light (lux): %3.3f | Temperature (C): %3.3f | Humidity (%): %3.3f | Battery Voltage: %1.3f | Battery Level (%%): %3.2f",
+        soil, lux, temperature, humidity, voltage, percent
+    );
+    delay(1000);
 }
