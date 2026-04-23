@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <ArduinoHttpClient.h>
 
+using namespace pinicore;
+
 #define TAG_MAIN    "main"
 
 #define FIRMWARE_VERSION    666
