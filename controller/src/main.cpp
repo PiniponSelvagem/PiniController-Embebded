@@ -10,6 +10,7 @@ using namespace pinicore;
 
 #define FIRMWARE_VERSION    666
 
+//#define USE_NETWORK
 #define USE_WIFI
 #ifdef USE_WIFI
     WiFiComm wifi;
@@ -19,19 +20,24 @@ using namespace pinicore;
     INetwork* network = (INetwork*)&mobile;
 #endif
 
+RelaysGPIO _relays;
+IRelays* relays = (IRelays*)&_relays;
+
+
 bool connected = false;
 
 #define STORAGE_ID "PINI_TEST_CONTROLLER"
 Storage storage;
 
 
-void setup_() {
+void setup() {
     Serial.begin(115200);
     Serial.println();   // Just to start on a new clean line
 
     LOG_I(TAG_MAIN, "Setup started");
     LOG_I(TAG_MAIN, "Firmware: [%d] | Build: [%s, %s]", FIRMWARE_VERSION, __DATE__, __TIME__);
 
+#ifdef USE_NETWORK
 #ifdef USE_WIFI
     wifi.init();
     wifi.config(WIFI_SSID, WIFI_PASS);
@@ -46,6 +52,10 @@ void setup_() {
         delay(1000);
     }
     LOG_I(TAG_MAIN, "connected = %d", network->isConnected());
+#endif
+
+    uint8_t relaysPins[4] = {21, 19, 18, 5};
+    _relays.init(relaysPins, 4);
 
     /*
     OTATS ota(client, FIRMWARE_VERSION, "s_");
@@ -67,8 +77,20 @@ void setup_() {
     LOG_I(TAG_MAIN, "Setup completed");
 }
 
-void loop_() {
+void loop() {
+#ifdef USE_NETWORK
     network->maintain();
+#endif
+
+    for (int i=0; i<4; ++i) {
+        relays->set(0, i, true);
+        delay(1000);
+    }
+
+    for (int i=0; i<4; ++i) {
+        relays->set(0, i, false);
+        delay(1000);
+    }
 }
 
 
@@ -82,7 +104,7 @@ void loop_() {
 
 
 
-
+/*
 
 
 #include <Arduino.h>
@@ -165,3 +187,4 @@ void loop() {
     );
     delay(1000);
 }
+*/
