@@ -20,7 +20,7 @@ using namespace pinicore;
     INetwork* network = (INetwork*)&mobile;
 #endif
 
-RelaysGPIO _relays;
+RelaysVirtual _relays;
 IRelays* relays = (IRelays*)&_relays;
 
 
@@ -34,7 +34,7 @@ void setup() {
     Serial.begin(115200);
     Serial.println();   // Just to start on a new clean line
 
-    LOG_I(TAG_MAIN, "Setup started");
+    LOG_D(TAG_MAIN, "Setup started");
     LOG_I(TAG_MAIN, "Firmware: [%d] | Build: [%s, %s]", FIRMWARE_VERSION, __DATE__, __TIME__);
 
 #ifdef USE_NETWORK
@@ -55,13 +55,13 @@ void setup() {
 #endif
 
     uint8_t relaysPins[4] = {21, 19, 18, 5};
-    _relays.init(relaysPins, 4);
+    _relays.init(1, 4);
 
     /*
     OTATS ota(client, FIRMWARE_VERSION, "s_");
     ota.setProgressCallback(
         /* onProgress * [](uint32_t downloadedBytes, uint32_t totalBytes) {
-            LOG_T(TAG_MAIN, "DL: %6.02f %%", (100.0 * downloadedBytes) / totalBytes);
+            LOG_V(TAG_MAIN, "DL: %6.02f %%", (100.0 * downloadedBytes) / totalBytes);
         }
     );
     ota.setCredentials(OTA_TS_USER, OTA_TS_PASS);
@@ -74,7 +74,7 @@ void setup() {
     }
     */
 
-    LOG_I(TAG_MAIN, "Setup completed");
+    LOG_D(TAG_MAIN, "Setup completed");
 }
 
 void loop() {
